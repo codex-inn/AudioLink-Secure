@@ -7,7 +7,7 @@ import string
 import time
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -76,7 +76,7 @@ async def health():
 
 
 @app.post("/api/session")
-async def create_session(request):
+async def create_session(request: Request):
     ip = request_ip(request)
     if rate_limited(f"create:{ip}", CREATE_LIMIT_PER_IP):
         raise HTTPException(status_code=429, detail="Too many session requests. Wait a minute and try again.")
