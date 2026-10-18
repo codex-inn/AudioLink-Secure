@@ -1,5 +1,7 @@
 import asyncio
 import json
+from collections import defaultdict, deque
+from urllib.parse import urlsplit
 import secrets
 import string
 import time
@@ -17,6 +19,37 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 # In-memory MVP only. Sessions disappear when the service restarts.
 SESSIONS: dict[str, dict[str, Any]] = {}
 SESSION_TTL_SECONDS = 60 * 60
+RATE_WINDOW_SECONDS = 60
+CREATE_LIMIT_PER_IP = 8
+WS_LIMIT_PER_IP = 20
+RATE_EVENTS: dict[str, deque[float]] = defaultdict(deque)
+
+
+def request_ip(request_or_ws) -> str:
+    client = request_or_ws.client
+    return client.host if client else "unknown"
+
+
+def rate_limited(key: str, limit: int) -> bool:
+    now = time.time()
+    events = RATE_EVENTS[key]
+    while events and now - events[0] > RATE_WINDOW_SECONDS:
+        events.popleft()
+    if len(events) >= limit:
+        return True
+    events.append(now)
+    return False
+
+
+def valid_origin(origin: str | None, host: str | None) -> bool:
+    # Browsers normally send Origin for same-origin WebSocket connections.
+    # Permit absent Origin for command-line/local diagnostics; production clients should use HTTPS.
+    if not origin or not host:
+        return True
+    try:
+        return urlsplit(origin).netloc.lower() == host.lower()
+    except ValueError:
+        return False
 
 
 def new_code() -> str:
@@ -43,7 +76,10 @@ async def health():
 
 
 @app.post("/api/session")
-async def create_session():
+async def create_session(request):
+    ip = request_ip(request)
+    if rate_limited(f"create:{ip}", CREATE_LIMIT_PER_IP):
+        raise HTTPException(status_code=429, detail="Too many session requests. Wait a minute and try again.")
     cleanup_sessions()
     if len(SESSIONS) >= 500:
         raise HTTPException(status_code=503, detail="Too many active sessions. Try again later.")
@@ -60,6 +96,13 @@ async def create_session():
 
 @app.websocket("/ws/{code}/{role}")
 async def websocket_endpoint(websocket: WebSocket, code: str, role: str):
+    ip = request_ip(websocket)
+    if rate_limited(f"ws:{ip}", WS_LIMIT_PER_IP):
+        await websocket.close(code=1008)
+        return
+    if not valid_origin(websocket.headers.get("origin"), websocket.headers.get("host")):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     session = SESSIONS.get(code)
     if not session or time.time() - session["created_at"] > SESSION_TTL_SECONDS:
