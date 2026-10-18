@@ -50,12 +50,12 @@ main{max-width:980px;margin:0 auto;padding:36px 18px 60px}.top{display:flex;alig
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const state = { code:null, senderWs:null, receiverWs:null, senderPc:null, receiverPc:null, media:[], approvedPeer:null, peerId:null, pendingPeer:null, senderStream:null };
+  const state = { code:null, senderWs:null, receiverWs:null, senderPc:null, receiverPc:null, media:[], approvedPeer:null, peerId:null, pendingPeer:null, senderStream:null, audioContext:null };
   const setStatus = (id, text) => { $(id).textContent = text; };
   const setDot = (id, live) => { $(id).classList.toggle('live', !!live); };
   const wsUrl = (code, role) => (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/' + encodeURIComponent(code) + '/' + role;
   const send = (ws, obj) => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); };
-  const stopTracks = () => { for (const stream of state.media) for (const track of stream.getTracks()) track.stop(); state.media=[]; state.senderStream=null; };
+  const stopTracks = () => { for (const stream of state.media) for (const track of stream.getTracks()) track.stop(); state.media=[]; state.senderStream=null; if(state.audioContext){state.audioContext.close().catch(()=>{});state.audioContext=null;} };
   const closeSenderPc = () => { if (state.senderPc) state.senderPc.close(); state.senderPc=null; };
   const closeReceiverPc = () => { if (state.receiverPc) state.receiverPc.close(); state.receiverPc=null; $('remoteAudio').srcObject=null; };
   const rtcConfig = { iceServers: [{urls:'stun:stun.l.google.com:19302'}] };
@@ -92,6 +92,8 @@ main{max-width:980px;margin:0 auto;padding:36px 18px 60px}.top{display:flex;alig
           const answer=await pc.createAnswer(); await pc.setLocalDescription(answer);
           send(state.senderWs,{type:'answer',peer_id:msg.peer_id,description:pc.localDescription});
           pc.onconnectionstatechange=()=>{ if(pc.connectionState==='connected') {setStatus('senderStatus','LIVE: audio is being shared with the approved receiver.');setDot('senderDot',true);} else if(['failed','disconnected','closed'].includes(pc.connectionState)) setStatus('senderStatus','Audio connection state: '+pc.connectionState); };
+        } else if (msg.type === 'hangup' && msg.peer_id === state.approvedPeer) {
+          closeSenderPc(); state.approvedPeer=null; setStatus('senderStatus','Receiver disconnected. Audio capture remains active until you stop sharing.');
         } else if (msg.type === 'candidate' && msg.peer_id === state.approvedPeer && state.senderPc && msg.candidate) {
           try { await state.senderPc.addIceCandidate(msg.candidate); } catch(e) {}
         } else if (msg.type === 'receiver_disconnected') {
@@ -117,12 +119,16 @@ main{max-width:980px;margin:0 auto;padding:36px 18px 60px}.top{display:flex;alig
         if (!navigator.mediaDevices.getDisplayMedia) throw new Error('This browser does not support system audio sharing.');
         const display=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
         state.media.push(display);
-        display.getVideoTracks().forEach(t=>{t.stop();display.removeTrack(t);});
         if (!display.getAudioTracks().length) throw new Error('No system audio track was shared. Try Chrome/Edge and enable audio in the share picker.');
-        tracks.push(...display.getAudioTracks());
       }
-      const stream=new MediaStream(tracks); state.senderStream=stream;
-      tracks.forEach(t=>t.onended=()=>{ if(state.senderStream && state.senderStream.getTracks().every(x=>x.readyState==='ended')) {stopTracks();setStatus('senderStatus','Audio capture ended.');$('startBtn').disabled=false;$('stopBtn').disabled=true;} });
+      const audioContext = new AudioContext(); state.audioContext=audioContext;
+      const destination = audioContext.createMediaStreamDestination();
+      for (const sourceStream of state.media) {
+        const audioTracks = sourceStream.getAudioTracks();
+        if (audioTracks.length) audioContext.createMediaStreamSource(new MediaStream(audioTracks)).connect(destination);
+      }
+      state.senderStream=destination.stream;
+      state.senderStream.getAudioTracks().forEach(t=>t.onended=()=>{stopTracks();setStatus('senderStatus','Audio capture ended.');$('startBtn').disabled=false;$('stopBtn').disabled=true;});
       $('stopBtn').disabled=false; $('revokeBtn').disabled=false;
       setStatus('senderStatus','CAPTURE ACTIVE. Waiting for a receiver request. Approve only a device you recognize.');
       setDot('senderDot',true);
@@ -165,6 +171,7 @@ main{max-width:980px;margin:0 auto;padding:36px 18px 60px}.top{display:flex;alig
         const offer=await pc.createOffer();await pc.setLocalDescription(offer);
         send(state.receiverWs,{type:'offer',description:pc.localDescription});
       } else if(msg.type==='rejected'){setStatus('receiverStatus','The sender rejected the request.');$('connectBtn').disabled=false;}
+      else if(msg.type==='hangup'){closeReceiverPc();setStatus('receiverStatus','Sender stopped the session.');setDot('receiverDot',false);$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;}
       else if(msg.type==='answer'&&state.receiverPc){await state.receiverPc.setRemoteDescription(msg.description);}
       else if(msg.type==='candidate'&&state.receiverPc&&msg.candidate){try{await state.receiverPc.addIceCandidate(msg.candidate);}catch(e){}}
       else if(msg.type==='sender_disconnected'){closeReceiverPc();setStatus('receiverStatus','Sender disconnected.');setDot('receiverDot',false);$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;}
