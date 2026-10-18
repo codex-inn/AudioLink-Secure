@@ -120,6 +120,7 @@ main{max-width:980px;margin:0 auto;padding:36px 18px 60px}.top{display:flex;alig
         const display=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
         state.media.push(display);
         if (!display.getAudioTracks().length) throw new Error('No system audio track was shared. Try Chrome/Edge and enable audio in the share picker.');
+        display.getVideoTracks().forEach(t=>t.stop());
       }
       const audioContext = new AudioContext(); state.audioContext=audioContext;
       const destination = audioContext.createMediaStreamDestination();
