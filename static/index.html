@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827">
+<title>AudioLink Secure</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#121d30;--line:#293951;--text:#eef4ff;--muted:#9fb0c9;--accent:#66e0bd;--danger:#ff8f8f}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#182a43 0,#0b1220 55%);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
+main{max-width:980px;margin:0 auto;padding:36px 18px 60px}.top{display:flex;align-items:center;gap:14px;margin-bottom:26px}.logo{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;background:#1d3c4b;color:var(--accent);font-size:25px}.eyebrow{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}h1{font-size:clamp(28px,5vw,42px);line-height:1.1;margin:3px 0 8px}p{color:var(--muted);margin:0 0 14px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:24px}.card{background:rgba(18,29,48,.92);border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 16px 45px #0002}.card h2{margin:0 0 8px;font-size:21px}.tag{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;margin-bottom:14px}.dot{width:8px;height:8px;border-radius:50%;background:#8191a8}.dot.live{background:var(--accent);box-shadow:0 0 12px #66e0bd88}button,input{font:inherit}button{border:0;border-radius:11px;padding:11px 15px;font-weight:750;cursor:pointer;background:var(--accent);color:#092019}button.secondary{background:#23334b;color:var(--text);border:1px solid #3a4c66}button.danger{background:#512b37;color:#ffdce2;border:1px solid #824453}button:disabled{opacity:.45;cursor:not-allowed}.actions{display:flex;gap:9px;flex-wrap:wrap;margin:12px 0}.field{display:block;width:100%;border:1px solid #3a4c66;background:#0c1525;color:var(--text);border-radius:10px;padding:12px;margin:10px 0 12px}.checks{display:grid;gap:10px;margin:15px 0}.check{display:flex;align-items:flex-start;gap:10px;color:#d6e0ef}.check input{margin-top:6px;accent-color:var(--accent)}.status{min-height:48px;padding:11px 12px;background:#0c1525;border:1px solid #293951;border-radius:11px;color:var(--muted);font-size:14px;overflow-wrap:anywhere}.status strong{color:var(--text)}.code{font:800 24px ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.14em;color:var(--accent);margin:9px 0}.small{font-size:12px;color:var(--muted)}.warning{margin-top:22px;padding:14px 16px;border:1px solid #665333;background:#2c2518;border-radius:14px;color:#f4dfb1;font-size:14px}.hidden{display:none!important}audio{width:100%;margin-top:12px}.footer{margin-top:20px;text-align:center;color:var(--muted);font-size:12px}@media(max-width:720px){.grid{grid-template-columns:1fr}.card{padding:18px}main{padding-top:24px}}
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><div class="logo">◉</div><div><div class="eyebrow">Secure audio · MVP 0.1</div><h1>AudioLink Secure</h1></div></header>
+  <p>Share audio only with an explicitly approved receiver. The sender controls capture and can stop sharing at any time.</p>
+  <div class="grid">
+    <section class="card">
+      <div class="tag"><span id="senderDot" class="dot"></span><span>DESKTOP A · SENDER</span></div>
+      <h2>Start a sharing session</h2>
+      <p>Create a temporary pairing code. Keep this code private and share it only with the intended receiver.</p>
+      <div class="actions"><button id="createBtn">Create session</button><button id="startBtn" class="secondary" disabled>Start audio sharing</button></div>
+      <div id="codeArea" class="hidden"><div class="small">TEMPORARY PAIRING CODE</div><div id="code" class="code"></div></div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="micCheck" checked> <span><strong>Microphone</strong><br><span class="small">Ask Windows/browser for microphone permission.</span></span></label>
+        <label class="check"><input type="checkbox" id="systemCheck"> <span><strong>System audio</strong><br><span class="small">Use the browser's share picker; choose a tab/window/screen and enable audio if offered.</span></span></label>
+      </div>
+      <div class="actions"><button id="stopBtn" class="danger" disabled>Stop sharing</button><button id="revokeBtn" class="secondary" disabled>Close session</button></div>
+      <div id="senderStatus" class="status" role="status" aria-live="polite">Not connected. Create a session to begin.</div>
+      <div id="requests" class="hidden"></div>
+    </section>
+    <section class="card">
+      <div class="tag"><span id="receiverDot" class="dot"></span><span>DESKTOP B · RECEIVER</span></div>
+      <h2>Connect to a sender</h2>
+      <p>Enter the temporary code and request access. The sender must approve each new receiver connection.</p>
+      <label for="pairCode" class="small">PAIRING CODE</label>
+      <input id="pairCode" class="field" maxlength="8" autocomplete="off" placeholder="e.g. 8K2Q9PXR" aria-label="Pairing code">
+      <label for="receiverName" class="small">DEVICE LABEL</label>
+      <input id="receiverName" class="field" maxlength="40" autocomplete="off" value="My receiver desktop" aria-label="Receiver device label">
+      <div class="actions"><button id="connectBtn">Request connection</button><button id="disconnectBtn" class="danger" disabled>Disconnect</button></div>
+      <div id="receiverStatus" class="status" role="status" aria-live="polite">Not connected.</div>
+      <audio id="remoteAudio" controls autoplay></audio>
+      <div class="small">Audio is streamed live, not saved by this app. Browser/OS audio capture support may vary.</div>
+    </section>
+  </div>
+  <div class="warning"><strong>Security note:</strong> This first MVP uses temporary in-memory sessions and requires explicit approval. Do not treat it as production-ready. Use HTTPS in deployment; never share pairing codes publicly. There is no covert capture, and persistent trusted-device reconnect is not enabled yet.</div>
+  <div class="footer">AudioLink Secure · WebRTC encrypts media in transit · Stop or revoke access at any time</div>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const state = { code:null, senderWs:null, receiverWs:null, senderPc:null, receiverPc:null, media:[], approvedPeer:null, peerId:null, pendingPeer:null, senderStream:null };
+  const setStatus = (id, text) => { $(id).textContent = text; };
+  const setDot = (id, live) => { $(id).classList.toggle('live', !!live); };
+  const wsUrl = (code, role) => (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/' + encodeURIComponent(code) + '/' + role;
+  const send = (ws, obj) => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); };
+  const stopTracks = () => { for (const stream of state.media) for (const track of stream.getTracks()) track.stop(); state.media=[]; state.senderStream=null; };
+  const closeSenderPc = () => { if (state.senderPc) state.senderPc.close(); state.senderPc=null; };
+  const closeReceiverPc = () => { if (state.receiverPc) state.receiverPc.close(); state.receiverPc=null; $('remoteAudio').srcObject=null; };
+  const rtcConfig = { iceServers: [{urls:'stun:stun.l.google.com:19302'}] };
+
+  $('createBtn').onclick = async () => {
+    $('createBtn').disabled = true;
+    try {
+      const res = await fetch('/api/session', {method:'POST'});
+      if (!res.ok) throw new Error('Could not create session.');
+      const data = await res.json();
+      state.code = data.code;
+      $('code').textContent = data.code;
+      $('codeArea').classList.remove('hidden');
+      const ws = new WebSocket(wsUrl(data.code, 'sender'));
+      state.senderWs = ws;
+      ws.onopen = () => setStatus('senderStatus','Signaling connected. Choose audio sources, then start sharing.');
+      ws.onmessage = async event => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'sender_ready') { $('startBtn').disabled=false; setDot('senderDot',true); }
+        else if (msg.type === 'join_request') {
+          state.pendingPeer = msg.peer_id;
+          const area = $('requests'); area.classList.remove('hidden'); area.replaceChildren();
+          const label = document.createElement('p'); label.textContent = 'Connection request from: ' + (msg.label || 'Receiver');
+          const approve = document.createElement('button'); approve.textContent='Approve receiver'; approve.onclick=()=>{ state.approvedPeer=msg.peer_id; send(state.senderWs,{type:'approve',peer_id:msg.peer_id}); area.replaceChildren(); area.classList.add('hidden'); setStatus('senderStatus','Receiver approved. Establishing encrypted audio connection…'); };
+          const reject = document.createElement('button'); reject.textContent='Reject'; reject.className='danger'; reject.style.marginLeft='8px'; reject.onclick=()=>{send(state.senderWs,{type:'reject',peer_id:msg.peer_id});area.replaceChildren();area.classList.add('hidden');};
+          area.append(label,approve,reject);
+        } else if (msg.type === 'offer') {
+          if (!state.senderStream || msg.peer_id !== state.approvedPeer) return;
+          closeSenderPc();
+          const pc = new RTCPeerConnection(rtcConfig); state.senderPc=pc;
+          state.senderStream.getTracks().forEach(track => pc.addTrack(track,state.senderStream));
+          pc.onicecandidate = e => { if(e.candidate) send(state.senderWs,{type:'candidate',peer_id:msg.peer_id,candidate:e.candidate}); };
+          await pc.setRemoteDescription(msg.description);
+          const answer=await pc.createAnswer(); await pc.setLocalDescription(answer);
+          send(state.senderWs,{type:'answer',peer_id:msg.peer_id,description:pc.localDescription});
+          pc.onconnectionstatechange=()=>{ if(pc.connectionState==='connected') {setStatus('senderStatus','LIVE: audio is being shared with the approved receiver.');setDot('senderDot',true);} else if(['failed','disconnected','closed'].includes(pc.connectionState)) setStatus('senderStatus','Audio connection state: '+pc.connectionState); };
+        } else if (msg.type === 'candidate' && msg.peer_id === state.approvedPeer && state.senderPc && msg.candidate) {
+          try { await state.senderPc.addIceCandidate(msg.candidate); } catch(e) {}
+        } else if (msg.type === 'receiver_disconnected') {
+          if(msg.peer_id===state.approvedPeer){closeSenderPc();state.approvedPeer=null;setStatus('senderStatus','Receiver disconnected. Audio capture remains active until you stop sharing.');}
+        } else if (msg.type === 'error') setStatus('senderStatus',msg.message);
+      };
+      ws.onclose = () => { setStatus('senderStatus','Signaling connection closed.'); setDot('senderDot',false); $('startBtn').disabled=true; };
+      ws.onerror = () => setStatus('senderStatus','Signaling error. Check network and server status.');
+    } catch(e) { setStatus('senderStatus',e.message); $('createBtn').disabled=false; }
+  };
+
+  $('startBtn').onclick = async () => {
+    if (!state.senderWs || state.senderWs.readyState !== WebSocket.OPEN) return;
+    if (!$('micCheck').checked && !$('systemCheck').checked) { setStatus('senderStatus','Select microphone and/or system audio first.'); return; }
+    $('startBtn').disabled=true;
+    try {
+      const tracks=[];
+      if ($('micCheck').checked) {
+        const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
+        state.media.push(mic); tracks.push(...mic.getAudioTracks());
+      }
+      if ($('systemCheck').checked) {
+        if (!navigator.mediaDevices.getDisplayMedia) throw new Error('This browser does not support system audio sharing.');
+        const display=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+        state.media.push(display);
+        display.getVideoTracks().forEach(t=>{t.stop();display.removeTrack(t);});
+        if (!display.getAudioTracks().length) throw new Error('No system audio track was shared. Try Chrome/Edge and enable audio in the share picker.');
+        tracks.push(...display.getAudioTracks());
+      }
+      const stream=new MediaStream(tracks); state.senderStream=stream;
+      tracks.forEach(t=>t.onended=()=>{ if(state.senderStream && state.senderStream.getTracks().every(x=>x.readyState==='ended')) {stopTracks();setStatus('senderStatus','Audio capture ended.');$('startBtn').disabled=false;$('stopBtn').disabled=true;} });
+      $('stopBtn').disabled=false; $('revokeBtn').disabled=false;
+      setStatus('senderStatus','CAPTURE ACTIVE. Waiting for a receiver request. Approve only a device you recognize.');
+      setDot('senderDot',true);
+    } catch(e) {
+      stopTracks(); setStatus('senderStatus','Capture not started: '+e.message); $('startBtn').disabled=false;
+    }
+  };
+
+  $('stopBtn').onclick = () => {
+    send(state.senderWs,{type:'hangup',peer_id:state.approvedPeer});
+    closeSenderPc(); stopTracks(); state.approvedPeer=null;
+    $('stopBtn').disabled=true; $('startBtn').disabled=false;
+    setStatus('senderStatus','Audio sharing stopped. Capture permissions released.');
+  };
+  $('revokeBtn').onclick = () => {
+    closeSenderPc(); stopTracks();
+    if(state.senderWs){state.senderWs.close();state.senderWs=null;}
+    state.code=null;state.approvedPeer=null;state.pendingPeer=null;
+    $('codeArea').classList.add('hidden');$('createBtn').disabled=false;$('startBtn').disabled=true;$('stopBtn').disabled=true;$('revokeBtn').disabled=true;
+    setDot('senderDot',false);setStatus('senderStatus','Session closed and receiver access revoked.');
+  };
+
+  $('connectBtn').onclick = () => {
+    const code=$('pairCode').value.trim().toUpperCase();
+    if(!/^[A-Z0-9]{8}$/.test(code)){setStatus('receiverStatus','Enter the 8-character pairing code.');return;}
+    $('connectBtn').disabled=true;
+    const ws=new WebSocket(wsUrl(code,'receiver'));state.receiverWs=ws;
+    ws.onopen=()=>send(ws,{type:'join',label:$('receiverName').value.trim()||'Receiver'});
+    ws.onmessage=async event=>{
+      const msg=JSON.parse(event.data);
+      if(msg.type==='receiver_ready'){state.peerId=msg.peer_id;setStatus('receiverStatus','Request sent. Waiting for the sender to approve.');}
+      else if(msg.type==='approved'){
+        setStatus('receiverStatus','Approved. Negotiating encrypted audio…');
+        closeReceiverPc();
+        const pc=new RTCPeerConnection(rtcConfig);state.receiverPc=pc;
+        pc.addTransceiver('audio',{direction:'recvonly'});
+        pc.ontrack=e=>{$('remoteAudio').srcObject=e.streams[0];setStatus('receiverStatus','Connected. Live audio is arriving.');setDot('receiverDot',true);$('disconnectBtn').disabled=false;};
+        pc.onicecandidate=e=>{if(e.candidate)send(state.receiverWs,{type:'candidate',candidate:e.candidate});};
+        pc.onconnectionstatechange=()=>{if(['failed','disconnected','closed'].includes(pc.connectionState)){setStatus('receiverStatus','Audio connection state: '+pc.connectionState);setDot('receiverDot',false);}};
+        const offer=await pc.createOffer();await pc.setLocalDescription(offer);
+        send(state.receiverWs,{type:'offer',description:pc.localDescription});
+      } else if(msg.type==='rejected'){setStatus('receiverStatus','The sender rejected the request.');$('connectBtn').disabled=false;}
+      else if(msg.type==='answer'&&state.receiverPc){await state.receiverPc.setRemoteDescription(msg.description);}
+      else if(msg.type==='candidate'&&state.receiverPc&&msg.candidate){try{await state.receiverPc.addIceCandidate(msg.candidate);}catch(e){}}
+      else if(msg.type==='sender_disconnected'){closeReceiverPc();setStatus('receiverStatus','Sender disconnected.');setDot('receiverDot',false);$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;}
+      else if(msg.type==='error'){setStatus('receiverStatus',msg.message);$('connectBtn').disabled=false;}
+    };
+    ws.onclose=()=>{$('connectBtn').disabled=false;};
+    ws.onerror=()=>{setStatus('receiverStatus','Signaling error.');$('connectBtn').disabled=false;};
+  };
+  $('disconnectBtn').onclick=()=>{send(state.receiverWs,{type:'hangup'});closeReceiverPc();if(state.receiverWs)state.receiverWs.close();state.receiverWs=null;$('disconnectBtn').disabled=true;$('connectBtn').disabled=false;setDot('receiverDot',false);setStatus('receiverStatus','Disconnected.');};
+})();
+</script>
+</body>
+</html>
